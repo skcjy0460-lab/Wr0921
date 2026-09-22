@@ -36,7 +36,7 @@ if st.button("📄 보고서 생성", type="primary", use_container_width=True):
                 "grade": data["grade"],
                 "room_subtotal": int(result["room"]["subtotal"]),
                 "night_amount": int(result["night"]["금액"]),
-                "night_type": data["night_type"],
+                "night_type": data["night_label"],
                 "total_revenue": int(result["total_revenue"]),
                 "total_patient_days": result["room"]["total_patient_days"],
                 "grade_comparison": [
@@ -55,7 +55,8 @@ if st.button("📄 보고서 생성", type="primary", use_container_width=True):
         "period_label": data["period_label"],
         "generated_at": datetime.now().strftime("%Y년 %m월 %d일 %H:%M"),
         "grade": data["grade"],
-        "night_type": data["night_type"],
+        "night_type": result["night"]["구분"],
+        "night_detail": result["night"]["명칭"],
         "room_lines": result["room"]["lines"],
         "room_subtotal": result["room"]["subtotal"],
         "night_amount": result["night"]["금액"],

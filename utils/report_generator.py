@@ -38,7 +38,7 @@ def _room_rows_html(lines: list) -> str:
         warn = " class='warn'" if line.get("warning") else ""
         rows.append(f"""
         <tr{warn}>
-            <td>{line['병실구분']}</td>
+            <td class="name-cell">{line['명칭']}</td>
             <td>{line['구간']}</td>
             <td class="num">{line['환자일수']:,}</td>
             <td class="num">{_fmt(line['단가'])}</td>
@@ -58,7 +58,7 @@ def _grade_bars_html(comparison: list) -> str:
         pct = float(r["total_revenue"] / max_val * 100)
         is_current = r.get("is_current", False)
         cls = "bar-fill current" if is_current else "bar-fill"
-        label = f"{r['grade']}등급" + (" · 현재 적용" if is_current else "")
+        label = f"{r['grade']}등급" + (" · 현재 적용" if is_current else "") + (" ⚠️" if r.get("unmatched") else "")
         bars.append(f"""
         <div class="bar-row{' is-current' if is_current else ''}">
             <div class="bar-label">{label}</div>
@@ -231,6 +231,7 @@ body {{
     font-variant-numeric: tabular-nums;
 }}
 .kpi-card .kpi-sub {{ font-size: 0.68rem; color: #A9B4CE; margin-top: 6px; }}
+.kpi-card .kpi-sub-detail {{ margin-top: 3px; color: #7E8AAE; line-height: 1.35; }}
 
 /* ---------- Section ---------- */
 .section {{ margin-bottom: 26px; }}
@@ -259,6 +260,7 @@ tbody td {{ padding: 7.5px 9px; border-bottom: 0.5pt solid var(--line); }}
 tbody tr:nth-child(even) {{ background: rgba(212,175,99,0.05); }}
 td.num {{ font-variant-numeric: tabular-nums; }}
 td.code {{ color: var(--ink-300); font-size: 0.72rem; }}
+td.name-cell {{ font-size: 0.76rem; line-height: 1.3; max-width: 210px; }}
 td.strong {{ font-weight: 700; color: var(--navy-900); }}
 tr.warn td {{ color: #A6402F; }}
 tfoot td {{
@@ -357,15 +359,16 @@ tfoot tr:last-child td {{
             <div class="kpi-label">{ctx.get('night_type','야간간호료')}</div>
             <div class="kpi-value">{_fmt(ctx['night_amount'])}원</div>
             <div class="kpi-sub">1일당 {_fmt(ctx.get('night_unit_price', Decimal('0')))}원 × {ctx.get('night_patient_days',0):,}일</div>
+            <div class="kpi-sub kpi-sub-detail">{ctx.get('night_detail','')}</div>
         </div>
     </div>
 
     <section class="section">
-        <h2>{PLUS_GLYPH_SVG}<span class="sec-title">병실구분별 수익 상세</span><span class="sec-rule"></span></h2>
+        <h2>{PLUS_GLYPH_SVG}<span class="sec-title">병실료 항목별 수익 상세</span><span class="sec-rule"></span></h2>
         <table>
             <thead>
                 <tr>
-                    <th>병실구분</th><th>재원구간</th><th class="num">환자일수</th>
+                    <th>청구 항목명</th><th>재원구간</th><th class="num">환자일수</th>
                     <th class="num">단가(원)</th><th>수가코드</th><th class="num">금액(원)</th>
                 </tr>
             </thead>
@@ -374,7 +377,7 @@ tfoot tr:last-child td {{
             </tbody>
             <tfoot>
                 <tr><td colspan="5">병실료 소계</td><td class="num">{_fmt(ctx['room_subtotal'])}</td></tr>
-                <tr><td colspan="5">{ctx.get('night_type','야간간호료')}</td><td class="num">{_fmt(ctx['night_amount'])}</td></tr>
+                <tr><td colspan="5">{ctx.get('night_type','야간간호료')} <span class="muted">({ctx.get('night_detail','')})</span></td><td class="num">{_fmt(ctx['night_amount'])}</td></tr>
                 <tr><td colspan="5">총 수익</td><td class="num">{_fmt(ctx['total_revenue'])}</td></tr>
             </tfoot>
         </table>

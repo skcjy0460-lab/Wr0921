@@ -8,7 +8,7 @@ import streamlit as st
 from utils import db_manager as dbm
 
 st.title("🗂️ 수가 데이터(DB) 관리")
-st.caption("일반병동차등제 병실료 · 야간간호료 · 야간전담간호료 수가를 엑셀로 업로드하여 계산 기준 DB를 구성합니다.")
+st.caption("일반병동차등제 병실료(명칭·등급별) · 야간간호료 · 야간전담간호료(명칭별) 수가를 엑셀로 업로드하여 계산 기준 DB를 구성합니다.")
 
 st.divider()
 
@@ -35,7 +35,9 @@ with col2:
                 st.write(f"- {e}")
         else:
             st.session_state["fee_db"] = parsed["data"]
-            st.success(f"업로드 완료! 등급 {dbm.get_available_grades(parsed['data'])}개 확인됨.")
+            grades = dbm.get_available_grades(parsed["data"])
+            night_count = len(parsed["data"]["night_items"])
+            st.success(f"업로드 완료! 등급 {grades} · 야간 항목 {night_count}개 확인됨.")
             if st.button("💾 이 DB를 기본값으로 저장 (다음 실행에도 유지)", use_container_width=True):
                 dbm.save_db_to_disk(parsed["data"])
                 st.toast("기본 DB로 저장되었습니다.", icon="✅")
@@ -52,35 +54,29 @@ st.markdown("#### 3. 현재 등록된 DB 확인")
 grades = dbm.get_available_grades(fee_db)
 st.write(f"등록된 등급: **{grades}**")
 
-tab1, tab2, tab3 = st.tabs(["병실료", "야간간호료", "야간전담간호료"])
+tab1, tab2 = st.tabs(["병실료", "야간간호료 / 야간전담간호료"])
 
 with tab1:
     rows = []
     for r in fee_db["room_fee"]:
         for tier_name, tier in r["tiers"].items():
             rows.append({
-                "등급": r["등급"], "병실구분": r["병실구분"], "구간": tier_name,
-                "수가코드": tier["수가코드"], "금액": int(tier["금액"]),
+                "등급": r["등급"], "명칭": r["명칭"], "병실크기": r.get("병실크기") or "-",
+                "구간": tier_name, "수가코드": tier["수가코드"], "금액": int(tier["금액"]),
             })
     if rows:
-        df = pd.DataFrame(rows).sort_values(["등급", "병실구분", "구간"])
+        df = pd.DataFrame(rows).sort_values(["등급", "명칭", "구간"])
         st.dataframe(df, use_container_width=True, hide_index=True)
+        st.caption("※ '병실크기'는 명칭에서 자동 추출되어 등급별 수익 비교 시 매칭 키로 사용됩니다.")
     else:
         st.caption("데이터 없음")
 
 with tab2:
-    if fee_db["night_fee"]:
-        df = pd.DataFrame(fee_db["night_fee"])
+    if fee_db["night_items"]:
+        df = pd.DataFrame(fee_db["night_items"])[["구분", "명칭", "수가코드", "금액"]]
         df["금액"] = df["금액"].astype(int)
-        st.dataframe(df.sort_values("등급"), use_container_width=True, hide_index=True)
-    else:
-        st.caption("데이터 없음")
-
-with tab3:
-    if fee_db["night_dedicated_fee"]:
-        df = pd.DataFrame(fee_db["night_dedicated_fee"])
-        df["금액"] = df["금액"].astype(int)
-        st.dataframe(df.sort_values("등급"), use_container_width=True, hide_index=True)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.caption("※ 등급과 무관하게 병원이 실제 운영 중인 항목을 그대로 나열합니다. 보고서 작성 시 이 중 1개를 선택합니다.")
     else:
         st.caption("데이터 없음")
 

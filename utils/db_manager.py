@@ -1,22 +1,25 @@
 """
 일반병동차등제 병실료 / 야간간호료 / 야간전담간호료 수가 DB 관리.
 
-엑셀 템플릿 구조 (3개 시트):
+엑셀 구조 (실제 건강보험 수가 체계 기준, 3개 시트):
 
 1) 병실료
-   등급 | 병실구분 | 수가코드_1~15일 | 금액_1~15일 | 수가코드_16~30일 | 금액_16~30일 | 수가코드_31일이상 | 금액_31일이상
-   - 병실구분: 1인실, 2인실, 3인실, 4인실, 5인실, 6인실
+   명칭 | 등급 | 수가코드_1~15일 | 금액_1~15일 | 수가코드_16~30일 | 금액_16~30일 | 수가코드_31일이상 | 금액_31일이상
+   - 명칭: 실제 청구 항목명 (예: "병원 2등급간호관리료적용 2인실입원료")
+   - 등급: 병원이 적용 중인 간호관리료 차등등급 (숫자 등급 또는 'A' 등 특수 등급 모두 허용, 문자열로 취급)
+   - 병실 크기(1인실~6인실)는 명칭에서 자동으로 추출하여 등급 간 비교에 사용합니다.
 
-2) 야간간호료
-   등급 | 수가코드 | 1일당_금액
-
-3) 야간전담간호료
-   등급 | 수가코드 | 1일당_금액
+2) 야간간호료 / 야간전담간호료
+   명칭 | 수가코드 | 1일당_금액
+   - 등급과 무관하게 병원이 실제 운영 중인 항목(예: 야간전담간호사 운영비율 구간별)을 그대로 나열
+   - 리포트 작성 시 이 중 실제 적용 중인 항목 1개를 선택해서 사용합니다.
 
 업로드된 파일은 세션에 보관되며, '기본 DB로 저장' 시 로컬 JSON(data/fee_schedule.json)에
 영구 저장되어 다음 실행 시 자동으로 불러옵니다.
 """
+import io
 import json
+import re
 from pathlib import Path
 from decimal import Decimal, InvalidOperation
 
@@ -26,39 +29,55 @@ import streamlit as st
 BASE_DIR = Path(__file__).parent.parent
 DB_PATH = BASE_DIR / "data" / "fee_schedule.json"
 
-ROOM_TYPES = ["1인실", "2인실", "3인실", "4인실", "5인실", "6인실"]
+TIER_NAMES = ["1~15일", "16~30일", "31일이상"]
 
 ROOM_FEE_COLUMNS = [
-    "등급", "병실구분",
+    "명칭", "등급",
     "수가코드_1~15일", "금액_1~15일",
     "수가코드_16~30일", "금액_16~30일",
     "수가코드_31일이상", "금액_31일이상",
 ]
-NIGHT_FEE_COLUMNS = ["등급", "수가코드", "1일당_금액"]
+NIGHT_FEE_COLUMNS = ["명칭", "수가코드", "1일당_금액"]
+
+_ROOM_SIZE_RE = re.compile(r"([1-6])\s*인실")
+
+
+def extract_room_size(name: str):
+    """명칭 문자열에서 '2인실'과 같은 병실 크기를 추출 (등급 간 비교용 매칭 키)."""
+    m = _ROOM_SIZE_RE.search(name or "")
+    return f"{m.group(1)}인실" if m else None
 
 
 def generate_template_excel() -> bytes:
-    """빈 템플릿(예시 1개 등급 포함) 엑셀 바이트를 생성."""
-    room_rows = []
-    for room in ROOM_TYPES:
-        room_rows.append({
-            "등급": 1, "병실구분": room,
-            "수가코드_1~15일": "", "금액_1~15일": 0,
-            "수가코드_16~30일": "", "금액_16~30일": 0,
-            "수가코드_31일이상": "", "금액_31일이상": 0,
-        })
+    """실제 데이터 형식에 맞춘 예시 템플릿 엑셀 바이트를 생성."""
+    room_rows = [
+        {"명칭": "병원 1인실입원료[비급여]", "등급": "1",
+         "수가코드_1~15일": "", "금액_1~15일": 0,
+         "수가코드_16~30일": "", "금액_16~30일": 0,
+         "수가코드_31일이상": "", "금액_31일이상": 0},
+        {"명칭": "병원 1등급간호관리료적용 2인실입원료", "등급": "1",
+         "수가코드_1~15일": "", "금액_1~15일": 0,
+         "수가코드_16~30일": "", "금액_16~30일": 0,
+         "수가코드_31일이상": "", "금액_31일이상": 0},
+        {"명칭": "병원 2등급간호관리료적용 2인실입원료", "등급": "2",
+         "수가코드_1~15일": "", "금액_1~15일": 0,
+         "수가코드_16~30일": "", "금액_16~30일": 0,
+         "수가코드_31일이상": "", "금액_31일이상": 0},
+    ]
     room_df = pd.DataFrame(room_rows, columns=ROOM_FEE_COLUMNS)
 
     night_df = pd.DataFrame(
-        [{"등급": 1, "수가코드": "", "1일당_금액": 0}],
+        [{"명칭": "야간간호료-병원", "수가코드": "", "1일당_금액": 0}],
         columns=NIGHT_FEE_COLUMNS,
     )
     night_dedicated_df = pd.DataFrame(
-        [{"등급": 1, "수가코드": "", "1일당_금액": 0}],
+        [
+            {"명칭": "야간전담간호사 관리료-병원 야간전담간호사 운영비율 10% 미만", "수가코드": "", "1일당_금액": 0},
+            {"명칭": "야간전담간호사 관리료-병원 야간전담간호사 운영비율 10% 이상 ~ 15% 미만", "수가코드": "", "1일당_금액": 0},
+        ],
         columns=NIGHT_FEE_COLUMNS,
     )
 
-    import io
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as writer:
         room_df.to_excel(writer, sheet_name="병실료", index=False)
@@ -67,11 +86,12 @@ def generate_template_excel() -> bytes:
 
         guide = pd.DataFrame({
             "작성 안내": [
-                "1) 병실료 시트: 등급 × 병실구분(1인실~6인실)별로 재원일수 구간(1~15일/16~30일/31일이상)에 해당하는 수가코드와 금액을 입력하세요.",
-                "2) 야간간호료 / 야간전담간호료 시트: 등급별 1일당 가산 금액을 입력하세요. (두 항목은 상호 배타적으로 적용됩니다)",
-                "3) 등급은 병원에서 적용 중인 간호관리료 차등등급 번호를 그대로 입력하세요. (예: 1~7)",
-                "4) 금액은 숫자만 입력하세요 (원 단위, 콤마 없이).",
-                "5) 행을 추가/복사하여 필요한 만큼 등급을 늘려서 작성할 수 있습니다.",
+                "1) 병실료 시트: 명칭(실제 청구 항목명)과 등급별로 재원일수 구간(1~15일/16~30일/31일이상)에 해당하는 수가코드와 금액을 입력하세요.",
+                "2) 명칭에 'N인실'이 포함되어 있으면 등급 간 비교 시 동일 병실 크기로 자동 매칭됩니다.",
+                "3) 등급은 숫자 등급(1~6 등) 또는 'A' 등 병원에서 사용하는 표기를 그대로 입력하세요.",
+                "4) 야간간호료 / 야간전담간호료 시트에는 등급 없이, 병원이 실제 운영 중인 항목을 명칭별로 나열하세요.",
+                "   (예: 야간전담간호사 운영비율 구간별로 여러 행을 추가)",
+                "5) 금액은 숫자만 입력하세요 (원 단위, 콤마 없이).",
             ]
         })
         guide.to_excel(writer, sheet_name="작성안내", index=False)
@@ -91,7 +111,7 @@ def _to_decimal(value) -> Decimal:
 def parse_uploaded_excel(uploaded_file) -> dict:
     """업로드된 엑셀을 파싱하고 검증. 오류 목록과 함께 결과를 반환."""
     errors = []
-    result = {"room_fee": [], "night_fee": [], "night_dedicated_fee": []}
+    result = {"room_fee": [], "night_items": []}
 
     try:
         xls = pd.ExcelFile(uploaded_file)
@@ -108,15 +128,14 @@ def parse_uploaded_excel(uploaded_file) -> dict:
             errors.append(f"'병실료' 시트에 컬럼 누락: {missing_cols}")
         else:
             for i, row in df.iterrows():
-                room = str(row["병실구분"]).strip()
-                if pd.isna(row["등급"]) or room in ("", "nan"):
-                    continue
-                if room not in ROOM_TYPES:
-                    errors.append(f"'병실료' {i+2}행: 알 수 없는 병실구분 '{room}' (허용값: {ROOM_TYPES})")
+                name = str(row["명칭"]).strip() if pd.notna(row["명칭"]) else ""
+                grade = str(row["등급"]).strip() if pd.notna(row["등급"]) else ""
+                if not name or not grade:
                     continue
                 result["room_fee"].append({
-                    "등급": int(row["등급"]),
-                    "병실구분": room,
+                    "명칭": name,
+                    "등급": grade,
+                    "병실크기": extract_room_size(name),
                     "tiers": {
                         "1~15일": {
                             "수가코드": str(row["수가코드_1~15일"]) if pd.notna(row["수가코드_1~15일"]) else "",
@@ -133,8 +152,8 @@ def parse_uploaded_excel(uploaded_file) -> dict:
                     },
                 })
 
-    # 야간간호료 / 야간전담간호료
-    for sheet_key, result_key in [("야간간호료", "night_fee"), ("야간전담간호료", "night_dedicated_fee")]:
+    # 야간간호료 / 야간전담간호료 (등급 없이 명칭 기준 항목 나열)
+    for sheet_key, group_label in [("야간간호료", "야간간호료"), ("야간전담간호료", "야간전담간호료")]:
         if sheet_key not in xls.sheet_names:
             errors.append(f"'{sheet_key}' 시트를 찾을 수 없습니다.")
             continue
@@ -144,12 +163,17 @@ def parse_uploaded_excel(uploaded_file) -> dict:
             errors.append(f"'{sheet_key}' 시트에 컬럼 누락: {missing_cols}")
             continue
         for i, row in df.iterrows():
-            if pd.isna(row["등급"]):
+            name = str(row["명칭"]).strip() if pd.notna(row["명칭"]) else ""
+            if not name:
                 continue
-            result[result_key].append({
-                "등급": int(row["등급"]),
-                "수가코드": str(row["수가코드"]) if pd.notna(row["수가코드"]) else "",
+            code = str(row["수가코드"]) if pd.notna(row["수가코드"]) else ""
+            item_key = f"{group_label}::{code or name}"
+            result["night_items"].append({
+                "구분": group_label,
+                "명칭": name,
+                "수가코드": code,
                 "금액": _to_decimal(row["1일당_금액"]),
+                "key": item_key,
             })
 
     if not errors and not result["room_fee"]:
@@ -176,27 +200,38 @@ def load_db_from_disk() -> dict | None:
     with open(DB_PATH, "r", encoding="utf-8") as f:
         raw = json.load(f)
 
-    def restore(d):
-        if isinstance(d, dict):
-            return {k: restore(v) for k, v in d.items()}
-        if isinstance(d, list):
-            return [restore(v) for v in d]
-        return d
-
-    raw = restore(raw)
-    # 금액 필드를 다시 Decimal로 변환
     for row in raw.get("room_fee", []):
         for tier in row["tiers"].values():
             tier["금액"] = _to_decimal(tier["금액"])
-    for key in ("night_fee", "night_dedicated_fee"):
-        for row in raw.get(key, []):
-            row["금액"] = _to_decimal(row["금액"])
+    for row in raw.get("night_items", []):
+        row["금액"] = _to_decimal(row["금액"])
     return raw
 
 
 def get_available_grades(fee_db: dict) -> list:
     grades = {row["등급"] for row in fee_db.get("room_fee", [])}
-    return sorted(grades)
+
+    def sort_key(g):
+        return (0, int(g)) if g.isdigit() else (1, g)
+
+    return sorted(grades, key=sort_key)
+
+
+def get_grade_room_rows(fee_db: dict, grade: str) -> list:
+    return [r for r in fee_db.get("room_fee", []) if r["등급"] == str(grade)]
+
+
+def build_census_rows(fee_db: dict, grade: str) -> list:
+    """선택된 등급의 병실료 명칭별 × 재원구간별 입력 행(환자일수=0)을 생성."""
+    rows = []
+    for r in get_grade_room_rows(fee_db, grade):
+        for tier in TIER_NAMES:
+            rows.append({"명칭": r["명칭"], "구간": tier, "환자일수": 0})
+    return rows
+
+
+def get_night_items(fee_db: dict) -> list:
+    return fee_db.get("night_items", [])
 
 
 def get_db_from_session_or_disk():
