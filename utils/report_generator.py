@@ -92,6 +92,12 @@ def build_html_report(ctx: dict) -> str:
             </div>
         </section>"""
 
+    bed_suffix = ""
+    if ctx.get("total_beds"):
+        bed_suffix = f" · 총 {ctx['total_beds']}병상"
+        if ctx.get("occupancy") is not None:
+            bed_suffix += f" (가동률 {ctx['occupancy']}%)"
+
     html = f"""<!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -333,7 +339,7 @@ tfoot tr:last-child td {{
             <h1>일반병동 수익 분석 보고서</h1>
             <div class="subline">
                 <span class="rule"></span>
-                <span class="text"><b>{ctx.get('hospital_name','')}</b> · 분석기간 {ctx.get('period_label','')}</span>
+                <span class="text"><b>{ctx.get('hospital_name','')}</b> · 분석기간 {ctx.get('period_label','')}{bed_suffix}</span>
             </div>
         </div>
         <div class="logo-emblem">

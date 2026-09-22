@@ -68,6 +68,7 @@ def build_report_prompt(context: dict) -> str:
 - 야간(전담)간호료: {context.get('night_amount')}원 ({context.get('night_type')})
 - 총 수익: {context.get('total_revenue')}원
 - 총 환자일수(연인원): {context.get('total_patient_days')}일
+- 병상 현황: 총 {context.get('total_beds', 0)}병상, 병상가동률 {context.get('occupancy', '입력 안 됨')}%
 - 등급별 비교 데이터: {context.get('grade_comparison')}
 
 [작성 지침]

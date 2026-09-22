@@ -221,6 +221,20 @@ def get_grade_room_rows(fee_db: dict, grade: str) -> list:
     return [r for r in fee_db.get("room_fee", []) if r["등급"] == str(grade)]
 
 
+def get_room_size_map(fee_db: dict, grade: str) -> dict:
+    """선택 등급에서 '1인실'~'6인실' 등 병실 크기 -> 해당 명칭 목록 매핑. (병상수 자동입력용)"""
+    mapping = {}
+    for r in get_grade_room_rows(fee_db, grade):
+        size = r.get("병실크기")
+        if size:
+            mapping.setdefault(size, []).append(r["명칭"])
+    return mapping
+
+
+def sorted_room_sizes(sizes) -> list:
+    return sorted(sizes, key=lambda s: int(s[0]) if s and s[0].isdigit() else 99)
+
+
 def build_census_rows(fee_db: dict, grade: str) -> list:
     """선택된 등급의 병실료 명칭별 × 재원구간별 입력 행(환자일수=0)을 생성."""
     rows = []

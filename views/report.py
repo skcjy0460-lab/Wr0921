@@ -39,6 +39,8 @@ if st.button("📄 보고서 생성", type="primary", use_container_width=True):
                 "night_type": data["night_label"],
                 "total_revenue": int(result["total_revenue"]),
                 "total_patient_days": result["room"]["total_patient_days"],
+                "total_beds": data.get("total_beds", 0),
+                "occupancy": data.get("occupancy"),
                 "grade_comparison": [
                     {"등급": r["grade"], "총수익": int(r["total_revenue"])} for r in data["comparison"]
                 ],
@@ -57,6 +59,9 @@ if st.button("📄 보고서 생성", type="primary", use_container_width=True):
         "grade": data["grade"],
         "night_type": result["night"]["구분"],
         "night_detail": result["night"]["명칭"],
+        "total_beds": data.get("total_beds", 0),
+        "bed_counts": data.get("bed_counts", {}),
+        "occupancy": data.get("occupancy"),
         "room_lines": result["room"]["lines"],
         "room_subtotal": result["room"]["subtotal"],
         "night_amount": result["night"]["금액"],

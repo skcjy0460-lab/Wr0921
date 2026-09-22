@@ -50,9 +50,9 @@ else:
     period_days = int(period_choice.replace("일", ""))
 period_label = f"최근 {period_days}일"
 
-st.markdown("#### 3. 병실 항목별 재원일수(연인원) 입력")
-st.caption("선택한 등급에 등록된 병실료 명칭 × 재원일수구간별 **총 환자일수(연인원)** 를 입력하세요. "
-           "예: 2인실에서 1~15일 구간 환자가 평균 4명씩 7일간 입원했다면 28일을 입력합니다.")
+st.markdown("#### 3. 병상 수 입력 → 재원일수 자동 계산")
+size_map = dbm.get_room_size_map(fee_db, grade)
+room_sizes = dbm.sorted_room_sizes(size_map.keys())
 
 editor_state_key = f"census_editor_{grade}"
 if editor_state_key not in st.session_state:
@@ -61,6 +61,52 @@ if editor_state_key not in st.session_state:
         st.warning(f"'{grade}' 등급에 등록된 병실료 명칭이 없습니다. 수가 데이터를 확인해 주세요.")
         st.stop()
     st.session_state[editor_state_key] = pd.DataFrame(rows)
+
+if not room_sizes:
+    st.caption("선택한 등급의 병실료 명칭에서 'N인실' 표기를 찾을 수 없어 병상 수 자동계산을 사용할 수 없습니다. 아래 표에 직접 입력해 주세요.")
+    total_beds = 0
+    bed_counts = {}
+    occupancy = 100
+else:
+    st.caption("병실 크기별 병상 수와 병상가동률을 입력하면, 선택한 기간 기준 예상 환자일수를 아래 표의 "
+               "'1~15일' 구간에 자동으로 채워줍니다. 장기입원(16~30일/31일이상) 비중은 표에서 직접 조정하세요.")
+
+    total_beds = st.number_input(
+        "병원 총 병상수 (일반병동 기준)", min_value=0, step=1, key="total_beds_input",
+    )
+
+    bed_counts = {}
+    bed_cols = st.columns(len(room_sizes))
+    for col, size in zip(bed_cols, room_sizes):
+        with col:
+            bed_counts[size] = st.number_input(
+                f"{size} 병상수", min_value=0, step=1,
+                key=f"beds_{grade}_{size}",
+            )
+
+    occupancy = st.slider("병상가동률(%) — 입력한 병상 대비 실제 입원 비율", min_value=0, max_value=100,
+                           value=100, step=1, key="occupancy_input")
+
+    bed_sum = sum(bed_counts.values())
+    if total_beds and bed_sum and bed_sum != total_beds:
+        st.warning(f"병실 크기별 병상수 합계({bed_sum}병상)가 총 병상수({total_beds}병상)와 다릅니다. 확인해 주세요.")
+
+    if st.button("🛏️ 병상수 기준으로 '1~15일' 구간 자동 채우기", use_container_width=True):
+        df = st.session_state[editor_state_key].copy()
+        for size, beds in bed_counts.items():
+            if beds <= 0:
+                continue
+            patient_days = round(beds * occupancy / 100 * period_days)
+            for name in size_map.get(size, []):
+                mask = (df["명칭"] == name) & (df["구간"] == "1~15일")
+                df.loc[mask, "환자일수"] = patient_days
+        st.session_state[editor_state_key] = df
+        st.toast("병상수 기준으로 1~15일 구간을 채웠습니다. 필요 시 장기입원 구간을 추가로 조정하세요.", icon="🛏️")
+        st.rerun()
+
+st.markdown("#### 4. 병실 항목별 재원일수(연인원) 입력")
+st.caption("선택한 등급에 등록된 병실료 명칭 × 재원일수구간별 **총 환자일수(연인원)** 를 입력하세요. "
+           "예: 2인실에서 1~15일 구간 환자가 평균 4명씩 7일간 입원했다면 28일을 입력합니다.")
 
 edited_df = st.data_editor(
     st.session_state[editor_state_key],
@@ -101,6 +147,9 @@ if st.button("🧮 수익 계산하기", type="primary", use_container_width=Tru
         "census": census,
         "result": result,
         "comparison": comparison,
+        "total_beds": total_beds,
+        "bed_counts": bed_counts,
+        "occupancy": occupancy,
     }
     st.success("계산이 완료되었습니다. 아래에서 결과를 확인하거나 'AI 보고서 생성' 메뉴로 이동하세요.")
 
@@ -116,6 +165,9 @@ if "last_calc" in st.session_state:
     m3.metric("야간 가산", calc.format_krw(result["night"]["금액"]))
     m4.metric("총 환자일수(연인원)", f"{result['room']['total_patient_days']:,}일")
     st.caption(f"적용 야간 항목: {data['night_label']}")
+    if data.get("total_beds"):
+        bed_detail = " · ".join(f"{k} {v}병상" for k, v in data.get("bed_counts", {}).items() if v > 0)
+        st.caption(f"병상 현황: 총 {data['total_beds']}병상 (가동률 {data['occupancy']}%) — {bed_detail}")
 
     with st.expander("병실 항목별 상세 내역 보기", expanded=True):
         rows = []
