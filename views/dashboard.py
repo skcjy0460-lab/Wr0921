@@ -30,15 +30,37 @@ with c1:
 with c2:
     grade = st.selectbox("적용 간호관리료 등급", grades, index=0)
 
+NONE_OPTION = "(선택 안 함)"
+
+
+def _build_night_select(category_label: str):
+    items = [i for i in night_items if i["구분"] == category_label]
+    labels = {NONE_OPTION: NONE_OPTION}
+    labels.update({item["key"]: f"{item['명칭']} — {int(item['금액']):,}원/일" for item in items})
+    options = [NONE_OPTION] + [item["key"] for item in items]
+    if not items:
+        st.caption(f"DB에 등록된 {category_label} 항목이 없습니다.")
+        return None
+    selected = st.selectbox(
+        f"{category_label} 적용 항목", options=options,
+        format_func=lambda k: labels[k], key=f"night_select_{category_label}",
+    )
+    return None if selected == NONE_OPTION else selected
+
+
+st.caption("야간간호료와 야간전담간호료는 병원 운영 형태에 따라 동시에 받을 수 있습니다. "
+           "해당하는 항목을 각각 선택하세요 (해당 없음은 '선택 안 함').")
+nc1, nc2 = st.columns(2)
+with nc1:
+    night_key_general = _build_night_select("야간간호료")
+with nc2:
+    night_key_dedicated = _build_night_select("야간전담간호료")
+
+night_keys = [k for k in [night_key_general, night_key_dedicated] if k]
 night_labels = {
     item["key"]: f"[{item['구분']}] {item['명칭']} — {int(item['금액']):,}원/일"
     for item in night_items
 }
-night_key = st.selectbox(
-    "야간간호료 / 야간전담간호료 적용 항목",
-    options=list(night_labels.keys()),
-    format_func=lambda k: night_labels[k],
-)
 
 st.markdown("#### 2. 분석 기간")
 period_options = ["1일", "3일", "7일", "14일", "21일", "30일", "직접 입력"]
@@ -132,18 +154,20 @@ if st.button("🧮 수익 계산하기", type="primary", use_container_width=Tru
         st.error("환자일수를 1건 이상 입력해 주세요.")
         st.stop()
 
-    result = calc.calc_total_revenue(fee_db, grade, census, night_key)
-    comparison = calc.compare_grades(fee_db, grade, grades, census, night_key)
+    result = calc.calc_total_revenue(fee_db, grade, census, night_keys)
+    comparison = calc.compare_grades(fee_db, grade, grades, census, night_keys)
     for r in comparison:
         r["is_current"] = (r["grade"] == grade)
+
+    applied_night_labels = [night_labels[k] for k in night_keys] if night_keys else ["선택 안 함"]
 
     st.session_state["last_calc"] = {
         "hospital_name": hospital_name or "미입력 병원",
         "period_label": period_label,
         "period_days": period_days,
         "grade": grade,
-        "night_label": night_labels[night_key],
-        "night_key": night_key,
+        "night_label": " + ".join(applied_night_labels),
+        "night_keys": night_keys,
         "census": census,
         "result": result,
         "comparison": comparison,
@@ -165,6 +189,13 @@ if "last_calc" in st.session_state:
     m3.metric("야간 가산", calc.format_krw(result["night"]["금액"]))
     m4.metric("총 환자일수(연인원)", f"{result['room']['total_patient_days']:,}일")
     st.caption(f"적용 야간 항목: {data['night_label']}")
+    if result["night"]["items"]:
+        with st.expander("야간 항목별 상세 내역", expanded=False):
+            night_rows = [{
+                "구분": it["구분"], "명칭": it["명칭"],
+                "단가(원)": int(it["단가"]), "환자일수": it["환자일수"], "금액(원)": int(it["금액"]),
+            } for it in result["night"]["items"]]
+            st.dataframe(pd.DataFrame(night_rows), use_container_width=True, hide_index=True)
     if data.get("total_beds"):
         bed_detail = " · ".join(f"{k} {v}병상" for k, v in data.get("bed_counts", {}).items() if v > 0)
         st.caption(f"병상 현황: 총 {data['total_beds']}병상 (가동률 {data['occupancy']}%) — {bed_detail}")

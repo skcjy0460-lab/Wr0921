@@ -60,25 +60,30 @@ def calc_room_revenue(fee_db: dict, grade: str, census: list) -> dict:
     return {"lines": lines, "subtotal": subtotal, "total_patient_days": total_patient_days}
 
 
-def calc_night_revenue(fee_db: dict, night_key: str, total_patient_days: int) -> dict:
-    item = _find_night_item(fee_db, night_key)
-    if item is None:
-        return {"구분": "-", "명칭": "(선택 안 됨)", "단가": Decimal("0"),
-                "환자일수": total_patient_days, "금액": Decimal("0")}
-    unit_price = item["금액"]
-    amount = (unit_price * Decimal(total_patient_days)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-    return {
-        "구분": item["구분"],
-        "명칭": item["명칭"],
-        "단가": unit_price,
-        "환자일수": total_patient_days,
-        "금액": amount,
-    }
+def calc_night_revenue(fee_db: dict, night_keys: list, total_patient_days: int) -> dict:
+    """
+    night_keys: 0개 이상의 야간 항목 key 목록 (예: 야간간호료 1개 + 야간전담간호료 1개를 동시 적용).
+    반환: {"items": [...각 항목별 금액...], "금액": 합계, "환자일수": total_patient_days}
+    """
+    items = []
+    total = Decimal("0")
+    for key in (night_keys or []):
+        item = _find_night_item(fee_db, key)
+        if item is None:
+            continue
+        unit_price = item["금액"]
+        amount = (unit_price * Decimal(total_patient_days)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        items.append({
+            "구분": item["구분"], "명칭": item["명칭"],
+            "단가": unit_price, "환자일수": total_patient_days, "금액": amount,
+        })
+        total += amount
+    return {"items": items, "금액": total, "환자일수": total_patient_days}
 
 
-def calc_total_revenue(fee_db: dict, grade: str, census: list, night_key: str) -> dict:
+def calc_total_revenue(fee_db: dict, grade: str, census: list, night_keys: list) -> dict:
     room_result = calc_room_revenue(fee_db, grade, census)
-    night_result = calc_night_revenue(fee_db, night_key, room_result["total_patient_days"])
+    night_result = calc_night_revenue(fee_db, night_keys, room_result["total_patient_days"])
     total = room_result["subtotal"] + night_result["금액"]
     return {
         "grade": grade,
@@ -88,7 +93,7 @@ def calc_total_revenue(fee_db: dict, grade: str, census: list, night_key: str) -
     }
 
 
-def compare_grades(fee_db: dict, base_grade: str, grades: list, census: list, night_key: str) -> list:
+def compare_grades(fee_db: dict, base_grade: str, grades: list, census: list, night_keys: list) -> list:
     """
     base_grade에서 입력한 census(명칭 기준)를, 명칭에서 추출한 '병실크기'를 매개로
     다른 등급의 동일 병실크기 수가에 대입하여 수익을 비교합니다.
@@ -129,7 +134,7 @@ def compare_grades(fee_db: dict, base_grade: str, grades: list, census: list, ni
             subtotal += (price * Decimal(days)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
             total_days += days
 
-        night_result = calc_night_revenue(fee_db, night_key, total_days)
+        night_result = calc_night_revenue(fee_db, night_keys, total_days)
         total = subtotal + night_result["금액"]
         results.append({
             "grade": g,
