@@ -1,7 +1,7 @@
 """
 일반병동 수익 보고서 생성기 (Ward Revenue Report Generator)
 - Wivo Company / 메디엄
-- Streamlit 기반, Gemini AI 리포트 해설, 프리미엄 A4 HTML 리포트 출력
+- Streamlit 기반, Wivo AI 리포트 해설, 프리미엄 A4 HTML 리포트 출력
 """
 import streamlit as st
 from pathlib import Path
@@ -105,6 +105,7 @@ pages = {
     "분석": [
         st.Page("views/dashboard.py", title="수익 계산 대시보드", icon="📊", default=True),
         st.Page("views/report.py", title="AI 보고서 생성", icon="🧾"),
+        st.Page("views/compare.py", title="비교 AI 보고서 생성", icon="⚖️"),
     ],
     "관리": [
         st.Page("views/data_management.py", title="수가 데이터(DB) 관리", icon="🗂️"),

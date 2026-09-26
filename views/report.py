@@ -22,7 +22,7 @@ result = data["result"]
 
 st.caption(f"{data['hospital_name']} · {data['period_label']} · {data['grade']}등급 기준 계산 결과로 보고서를 생성합니다.")
 
-use_ai = st.toggle("Gemini AI 경영 분석 해설 포함", value=True,
+use_ai = st.toggle("Wivo AI 경영 분석 해설 포함", value=True,
                     help="병실 구성, 등급별 영향, 개선 방향 등을 AI가 자동 작성합니다.")
 
 if st.button("📄 보고서 생성", type="primary", use_container_width=True):
@@ -48,7 +48,7 @@ if st.button("📄 보고서 생성", type="primary", use_container_width=True):
             ai_result = ai_client.generate_report_narrative(prompt)
             if ai_result.get("text"):
                 ai_narrative = ai_result["text"]
-                st.toast(f"AI 해설 생성 완료 ({ai_result.get('model_used')})", icon="✨")
+                st.toast("Wivo AI 해설 생성 완료", icon="✨")
             else:
                 st.warning(f"AI 해설 생성에 실패했습니다: {ai_result.get('error')} — 해설 없이 보고서를 생성합니다.")
 
